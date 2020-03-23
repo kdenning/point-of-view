@@ -1,0 +1,105 @@
+---
+title: "Point of View & Perspective Taking"
+author: "Kathryn Denning"
+date: "March 23, 2020"
+output: 
+  html_document:
+    code_folding: "hide"
+    toc: true
+    toc_float: true
+---
+```{r setup data import and cleaning, echo = FALSE, warning = FALSE, message = FALSE, error = FALSE}
+# Cleaning
+## import data
+
+#install.packages("rio")
+#install.packages("here")
+#install.packages("tidyverse")
+#install.packages("magrittr")
+#install.packages("janitor")
+#install.packages("lme4")
+#install.packages("psy")
+#install.packages("irr")
+#install.packages("emmeans")
+#install.packages("sjPlot")
+#install.packages("effects")
+library(rio)
+library(here)
+library(tidyverse)
+library(magrittr)
+library(janitor)
+library(lme4)
+library(psy)
+library(irr)
+library(psych)
+library(sjPlot)
+library(emmeans)
+library(effects)
+library(readxl)
+
+# Setting global chunk options
+knitr::opts_chunk$set(echo = TRUE,
+                      message = FALSE,
+                      warning = FALSE)
+
+# Data after manually removing participants who did not correctly complete the PT manipulation
+pov <- read_excel(here("Denning_POV.xlsx")) 
+
+# Reverse coding
+pov_recode <- pov %>% 
+     mutate_at(c("bfi_self_quiet", "bfi_self_rude","bfi_self_disorg",
+                 "bfi_self_taskdiff", "bfi_self_stable", "bfi_self_abstract",
+                 "bfi_self_risk", "bfi_self_use", "bfi_targ_quiet", 
+                 "bfi_targ_rude", "bfi_targ_disorg", "bfi_targ_taskdiff",
+                 "bfi_targ_stable", "bfi_targ_abstract", "bfi_targ_risk",
+                 "bfi_targ_use"), 
+               list(~recode(., `1`= 5, `2`= 4, `3` = 3, `4` = 2, `5` = 1)))
+
+# Cleaning
+
+pov_clean <- pov_recode %>% 
+  # Getting data into long-format with variables for BFI for Self, Targ, PT_Condition, and Ageism
+    pivot_longer(c(bfi_self_quiet:bfi_self_rules, 
+                   bfi_targ_quiet:bfi_targ_rules),
+           names_sep = "_",
+           names_to = c("drop1", "bfi_type", "bfi_qtype")) %>% 
+  pivot_wider(names_from = bfi_type, values_from = value) %>% 
+  pivot_longer(c(pt_control:pt_obj),
+               names_sep = "_",
+               names_to = c("drop2", "pt_condition")) %>% 
+  select(-c(drop1, drop2, value)) %>% 
+  pivot_longer(c(ageism_1:ageism_10),
+               names_sep = "_",
+               names_to = c("drop3", "ageism_itemnum")) %>%
+  # Change label of value to ageism, make age numeric, make gender and race categorical with labels, make pt_condition a factor
+  mutate(ageism = value,
+         age = as.numeric(age),
+         race = recode(race,
+                        `1` = "American Indian/Alaska Native",
+                        `2` = "Asian",
+                        `3` = "Black",
+                        `4` = "Latinx",
+                        `6` = "Middle Eastern",
+                        `7` = "Pacific Islander",
+                        `8` = "White",
+                        `9` = "Other",
+                        `10` = "Prefer not to answer"),
+         gender = recode(gender,
+                         `1` = "Female",
+                         `2` = "Male",
+                         `3` = "Non-binary",
+                         `4` = "Other",
+                         `5` = "Prefer not to say"),
+         pt_condition = as.factor(pt_condition),
+         self_c = self - mean(self, na.rm = TRUE)) %>% 
+  select(-c(drop3, value, gender_txt, race_txt))
+  
+
+pov_clean %>% 
+  select(subid) %>% 
+  unique() %>% 
+  nrow()
+
+# check man check before analysis
+# higher scores on rupp = stereotyping
+```
