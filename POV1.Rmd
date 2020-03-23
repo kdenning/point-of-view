@@ -67,6 +67,7 @@ pov_clean <- pov_recode %>%
   pivot_longer(c(pt_control:pt_obj),
                names_sep = "_",
                names_to = c("drop2", "pt_condition")) %>% 
+  filter(value != "NA") %>% 
   select(-c(drop1, drop2, value)) %>% 
   pivot_longer(c(ageism_1:ageism_10),
                names_sep = "_",
@@ -74,32 +75,83 @@ pov_clean <- pov_recode %>%
   # Change label of value to ageism, make age numeric, make gender and race categorical with labels, make pt_condition a factor
   mutate(ageism = value,
          age = as.numeric(age),
-         race = recode(race,
+         race = as.factor(recode(race,
                         `1` = "American Indian/Alaska Native",
                         `2` = "Asian",
                         `3` = "Black",
-                        `4` = "Latinx",
+                        `5` = "Latinx",
                         `6` = "Middle Eastern",
-                        `7` = "Pacific Islander",
-                        `8` = "White",
-                        `9` = "Other",
-                        `10` = "Prefer not to answer"),
-         gender = recode(gender,
+                        `4` = "Pacific Islander",
+                        `7` = "White",
+                        `8` = "Other",
+                        `9` = "Prefer not to answer")),
+         gender = as.factor(recode(gender,
                          `1` = "Female",
                          `2` = "Male",
                          `3` = "Non-binary",
                          `4` = "Other",
-                         `5` = "Prefer not to say"),
+                         `5` = "Prefer not to say")),
          pt_condition = as.factor(pt_condition),
          self_c = self - mean(self, na.rm = TRUE)) %>% 
   select(-c(drop3, value, gender_txt, race_txt))
-  
-
-pov_clean %>% 
-  select(subid) %>% 
-  unique() %>% 
-  nrow()
 
 # check man check before analysis
 # higher scores on rupp = stereotyping
+```
+
+# Demographics
+## Sample Size
+
+```{r sample size}
+pov_clean %>% 
+  select(subid) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  nrow()
+```
+
+## Participants per condition
+
+```{r participants per condition}
+pov_clean %>% 
+  select(subid, pt_condition) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  group_by(pt_condition) %>% 
+  count()
+```
+
+## Age
+
+```{r age}
+pov_clean %>% 
+  select(subid, age) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  summarize(mean = mean(age),
+            sd = sd(age))
+```
+
+## Gender
+
+```{r gender}
+pov_clean %>% 
+  select(subid, gender) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  group_by(gender) %>% 
+  count()
+```
+
+## Race
+
+```{r race}
+levels(pov_clean$race)
+pov_clean %>% 
+  select(subid, race) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  group_by(race) %>% 
+  count() %>% 
+  mutate(percent = n/449*100)
 ```
