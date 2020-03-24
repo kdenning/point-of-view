@@ -10,6 +10,30 @@ output:
 editor_options: 
   chunk_output_type: console
 ---
+
+# Introduction to study
+
+This study looked at whether the point of view people responded in when writing about the day in the life of a target individual (e.g., a perspective taking manipulation) impacted the extent they projected (Analysis 1) and stereotyped (Analysis 2) with the target individual. We also checked to see if the point of view condition predicted self-reported perspective taking by participants (Analysis 3). Due to an issue with singularity in our MLM in Analysis 1, we also analyzed difference scores in projection as the outcome variable, instead of item level scores for projection (see difference score results in Analysis 4). 
+
+Variable names that might be confusing:
+
+* **pt_condition** : What perpsective taking condition participants were randomly assigned. Helmert contrasts were applied to this variable. 
+    + 1 = 1st person
+    + 2 = 3rd person
+    + 3 = Control
+    + 4 = Objective
+* **targ** : Participants' responses for the target on the BFI.
+* **self_c** : Participants' responses for themselves on the BFI. This variable was mean-centered.
+* **pt_mancheck** : Participants' self-reported responses on how much they took the perspective of the target. This was coded as follows, but reverse coded for the plot in Analysis 3 to make it more interpretable (that higher scores meant more PT). 
+    + 1 = A great deal
+    + 2 = A lot
+    + 3 = A moderate amount
+    + 4 = A little
+    + 5 = None at all
+* **diff_score** : The difference in the avarage scores of participants' on the BFI for themselves minus the BFI for the target. These scores were not absolute valued.
+
+# Alpha for the ageism scale so it can be collapse into one composite score per participant
+
 ```{r setup data import and cleaning, echo = FALSE, warning = FALSE, message = FALSE, error = FALSE}
 # Cleaning
 ## import data
@@ -137,16 +161,17 @@ pov_clean %>%
 
 ## Age
 
-```{r age}
-pov_clean %>% 
-  select(subid, age) %>% 
-  unique() %>% 
-  na.omit() %>% 
-  summarize(mean = mean(age),
-            sd = sd(age))
+### Mean
+
+```{r mean age}
+mean(pov_clean$age)
 ```
 
-NOT SURE WHY THIS ISNT WORKING
+### SD
+
+```{r sd age}
+sd(pov_clean$age)
+```
 
 ## Gender
 
@@ -162,7 +187,6 @@ pov_clean %>%
 ## Race
 
 ```{r race}
-levels(pov_clean$race)
 pov_clean %>% 
   select(subid, race) %>% 
   unique() %>% 
@@ -192,6 +216,8 @@ hist_targ <- pov_clean %>%
 hist(hist_targ$targ)
 ```
 
+## Histogram for PT manipulation check
+
 ```{r hist pt check}
 hist_ptcheck <- pov_clean %>% 
   select(subid, pt_mancheck) %>% 
@@ -206,9 +232,9 @@ hist(hist_ptcheck$pt_mancheck)
 4 = A little
 5 = None at all
 
-So, people are generally skewed toward reporting they were perspective taking, which generally they should be based on the instructions
+So, people are  skewed toward reporting they were perspective taking, which generally they should be based on the instructions
 
-### Histogram for ageism scale
+## Histogram for ageism scale
 
 ```{r hist ageism}
 hist_ageism <- pov_clean %>% 
@@ -220,7 +246,6 @@ hist(hist_ageism$ageism_ave)
 ## Checking level 1 heteroscedasticity
 ```{r hetero}
 hetero <- lm(targ ~ self, data = pov_clean)
-
 par(mfrow=c(2,2)) # init 4 charts in 1 panel
 plot(hetero)
 ```
@@ -271,12 +296,13 @@ pov_clean %>%
   select(age, gender, race, pt_mancheck, self, targ, 
          pt_condition, self_c, ageism_ave) %>% 
   describe()
-describe(pov_clean)
 ```
 
 Only variable that is skewed is age due to an outlier of an older participant.
 
-# Model for projection
+# Analysis 1: MLM model for projection
+
+## Complex random effects model we predicted
 
 ```{r projection mlm}
 proj_model <- pov_clean %>% 
@@ -284,34 +310,47 @@ proj_model <- pov_clean %>%
   unique() %>% 
   na.omit()
 
-proj_model %>% 
-  select(subid) %>% 
-  unique() %>% 
-  na.omit() %>% 
-  nrow()
-  
 contrasts(proj_model$pt_condition) <- "contr.helmert"
 contrasts(proj_model$pt_condition)
 
 projection <- lmer(targ ~ self_c*pt_condition + (self_c|subid), data = proj_model)
+summary(projection)
 tab_model(projection)
 ```
 
-Model has singularity issues, which makes me think there might be an issue due to the fact that two of the conditions have significantly more data than the other two somehow.
+## Fixed effects model
 
-# Model for stereotyping
+```{r fixed effects}
+projection_fixed <- lmer(targ ~ self_c*pt_condition + (1|subid), data = proj_model)
+summary(projection_fixed)
+tab_model(projection_fixed)
+```
+
+## Model with just L1 predictor of self, no random effects
+
+```{r fixed effects, just L1}
+projection_fixed_l1 <- lmer(targ ~ self_c + (1|subid), data = proj_model)
+summary(projection_fixed_l1)
+```
+
+## Model with simplest random effects structure
+
+```{r projection simple}
+projection_simplest <- lmer(targ ~ 1 + (1|subid), data = proj_model)
+summary(projection_simplest)
+```
+
+Model converged but has singularity issues, meaning the random effect for the item level is pretty much zero (which it is, you can see this under "Random Effects" in the "summary(projection)" output, where our item level data is labeled "self_c." I initially thought this might be because the random structure of the model was too complex for the data, but, even after running a model with the simplest random structure possible, I was still getting a singularity issue. Previously I have gotten this due to an error in contrasts, but I checked and that is not the case here. 
+
+After some more researching, I've basically concluded we are getting a singularity warning because there is so little variance in the item-level of our model. Typically, a singularity issue means you would not want to report that model, regardless, nothing but the main effect of self scores on BFI predicting target scores on BFI was significant anyways. I'm not super suprised, as the scores for the mean and SD for BFI for both self and target per condition are very similiar, so it really looks like there isn't much going on in the projection data.
+
+# Analysis 2: Anova for stereotyping
 
 ```{r stereo anova}
 stereo_model <- pov_clean %>% 
   select(ageism_ave, pt_condition, subid) %>% 
   unique() %>% 
   na.omit()
-
-stereo_model %>% 
-  select(subid) %>% 
-  unique() %>% 
-  na.omit() %>% 
-  nrow()
 
 contrasts(stereo_model$pt_condition) <- "contr.helmert"
 contrasts(stereo_model$pt_condition) 
@@ -322,7 +361,7 @@ summary(stereo)
 
 Only a marginal effect of 1st and 3rd person versus control.
 
-## Plot for stereotyping model
+## Plot for trending main effect
 
 ```{r stereo plot}
 ggplot(ageism_descrip, aes(pt_condition, mean, fill = pt_condition)) +
@@ -338,19 +377,13 @@ ggplot(ageism_descrip, aes(pt_condition, mean, fill = pt_condition)) +
        y = "Stereotyping score")
 ```
 
-# Model predicting manipulation check by condition
+# Analysis 3: Anova model predicting manipulation check by condition
 
 ```{r pt mancheck}
 pt_check_model <- pov_clean %>% 
   select(pt_mancheck, pt_condition, subid) %>% 
   unique() %>% 
   na.omit()
-
-pt_check_model %>% 
-  select(subid) %>% 
-  unique() %>% 
-  na.omit() %>% 
-  nrow()
 
 contrasts(pt_check_model$pt_condition) <- "contr.helmert"
 contrasts(pt_check_model$pt_condition) 
@@ -390,9 +423,10 @@ ggplot(pt_check_data, aes(pt_condition, mean, fill = pt_condition)) +
 
 The contrast that was significant was objective vs the other three (though the other two were marginal), which can be seen in this plot. Not surprising that we find less self-reported PT in the objective condition but not in the other three, though interesting we didn't find any differences between objective and the other conditions in our outcome measures.
 
-# Model predicting difference scores for projection by condition
+# Analysis 4: Model predicting difference scores for projection by condition
+## Preview of the difference score data - it can have both positives and negatives, did not use absolute values
 
-```{r pt cond diff scores analysis}
+```{r pt cond diff scores data}
 diff_score_data <- pov_clean %>% 
   select(subid, pt_condition, targ, self) %>% 
   group_by(subid) %>% 
@@ -403,7 +437,11 @@ diff_score_data <- pov_clean %>%
   na.omit() %>% 
   mutate(diff_score = self_ave-targ_ave)
 diff_score_data
+```
 
+## Results of difference score anova
+
+```{r diff score model}
 diff_score_data %>% 
   group_by(pt_condition) %>% 
   summarize(mean = mean(diff_score),
