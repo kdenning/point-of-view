@@ -7,6 +7,8 @@ output:
     code_folding: "hide"
     toc: true
     toc_float: true
+editor_options: 
+  chunk_output_type: console
 ---
 ```{r setup data import and cleaning, echo = FALSE, warning = FALSE, message = FALSE, error = FALSE}
 # Cleaning
@@ -55,6 +57,12 @@ pov_recode <- pov %>%
                  "bfi_targ_use"), 
                list(~recode(., `1`= 5, `2`= 4, `3` = 3, `4` = 2, `5` = 1)))
 
+# Looking at scale reliability for ageism
+pov_recode %>% 
+  select(ageism_1:ageism_10) %>% 
+  cronbach()
+#Looks good enough to collapse as one score
+
 # Cleaning
 
 pov_clean <- pov_recode %>% 
@@ -73,6 +81,7 @@ pov_clean <- pov_recode %>%
                names_sep = "_",
                names_to = c("drop3", "ageism_itemnum")) %>%
   # Change label of value to ageism, make age numeric, make gender and race categorical with labels, make pt_condition a factor
+  # Reverse coding the manipulation check to make it more intuitive to interpret
   mutate(ageism = value,
          age = as.numeric(age),
          race = as.factor(recode(race,
@@ -93,8 +102,13 @@ pov_clean <- pov_recode %>%
                          `5` = "Prefer not to say")),
          pt_condition = as.factor(pt_condition),
          self_c = self - mean(self, na.rm = TRUE)) %>% 
-  select(-c(drop3, value, gender_txt, race_txt))
-
+    # getting a composite score for ageism
+  group_by(subid) %>% 
+  mutate(ageism_ave = mean(ageism)) %>% 
+  select(-c(drop3, value, gender_txt, race_txt, ageism, ageism_itemnum)) %>% 
+    unique() %>% 
+  na.omit()
+  
 # check man check before analysis
 # higher scores on rupp = stereotyping
 ```
@@ -132,6 +146,8 @@ pov_clean %>%
             sd = sd(age))
 ```
 
+NOT SURE WHY THIS ISNT WORKING
+
 ## Gender
 
 ```{r gender}
@@ -153,5 +169,251 @@ pov_clean %>%
   na.omit() %>% 
   group_by(race) %>% 
   count() %>% 
-  mutate(percent = n/449*100)
+  mutate(percent = n/439*100)
 ```
+
+# Descriptives
+## Histogram of distributions
+### BFI for Self
+
+```{r hist self}
+hist_self <- pov_clean %>% 
+  select(subid, self) %>% 
+  unique()
+hist(hist_self$self)
+```
+
+### BFI for Target
+
+```{r hist targ}
+hist_targ <- pov_clean %>% 
+  select(subid, targ) %>% 
+  unique()
+hist(hist_targ$targ)
+```
+
+```{r hist pt check}
+hist_ptcheck <- pov_clean %>% 
+  select(subid, pt_mancheck) %>% 
+  mutate(pt_mancheck = as.numeric(pt_mancheck)) %>% 
+  unique()
+hist(hist_ptcheck$pt_mancheck)
+```
+
+1 = A great deal
+2 = A lot
+3 = A moderate amount
+4 = A little
+5 = None at all
+
+So, people are generally skewed toward reporting they were perspective taking, which generally they should be based on the instructions
+
+### Histogram for ageism scale
+
+```{r hist ageism}
+hist_ageism <- pov_clean %>% 
+  select(subid, ageism_ave) %>% 
+  unique()
+hist(hist_ageism$ageism_ave)
+```
+
+## Checking level 1 heteroscedasticity
+```{r hetero}
+hetero <- lm(targ ~ self, data = pov_clean)
+
+par(mfrow=c(2,2)) # init 4 charts in 1 panel
+plot(hetero)
+```
+
+Flat line in residuals vs fitted looks good!
+
+## Mean and SD for BFI by PT condition
+
+### BFI for Self
+
+```{r BFI self}
+pov_clean %>% 
+  select(subid, pt_condition, self) %>% 
+  na.omit() %>% 
+  group_by(pt_condition) %>% 
+  summarize(mean = mean(self),
+            sd = sd(self))
+```
+
+### BFI for Target
+
+```{r BFI target}
+pov_clean %>% 
+  select(subid, pt_condition, targ) %>% 
+  na.omit() %>% 
+  group_by(pt_condition) %>% 
+  summarize(mean = mean(targ),
+            sd = sd(targ))
+```
+
+## Mean and SD for ageism by condition
+
+```{r mean ageism}
+ageism_descrip <- pov_clean %>%
+  select(subid, pt_condition, ageism_ave) %>% 
+  na.omit() %>% 
+  group_by(pt_condition) %>% 
+  summarize(mean = mean(ageism_ave),
+            sd = sd(ageism_ave),
+            se = sd(ageism_ave)/sqrt(length(ageism_ave)))
+ageism_descrip
+```
+
+## Overall descriptives
+
+```{r overall descriptives}
+pov_clean %>% 
+  select(age, gender, race, pt_mancheck, self, targ, 
+         pt_condition, self_c, ageism_ave) %>% 
+  describe()
+describe(pov_clean)
+```
+
+Only variable that is skewed is age due to an outlier of an older participant.
+
+# Model for projection
+
+```{r projection mlm}
+proj_model <- pov_clean %>% 
+  select(targ, self_c, pt_condition, subid) %>% 
+  unique() %>% 
+  na.omit()
+
+proj_model %>% 
+  select(subid) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  nrow()
+  
+contrasts(proj_model$pt_condition) <- "contr.helmert"
+contrasts(proj_model$pt_condition)
+
+projection <- lmer(targ ~ self_c*pt_condition + (self_c|subid), data = proj_model)
+tab_model(projection)
+```
+
+Model has singularity issues, which makes me think there might be an issue due to the fact that two of the conditions have significantly more data than the other two somehow.
+
+# Model for stereotyping
+
+```{r stereo anova}
+stereo_model <- pov_clean %>% 
+  select(ageism_ave, pt_condition, subid) %>% 
+  unique() %>% 
+  na.omit()
+
+stereo_model %>% 
+  select(subid) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  nrow()
+
+contrasts(stereo_model$pt_condition) <- "contr.helmert"
+contrasts(stereo_model$pt_condition) 
+
+stereo <- lm(ageism_ave ~ pt_condition, data = stereo_model)
+summary(stereo)
+```
+
+Only a marginal effect of 1st and 3rd person versus control.
+
+## Plot for stereotyping model
+
+```{r stereo plot}
+ggplot(ageism_descrip, aes(pt_condition, mean, fill = pt_condition)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  scale_fill_viridis_d() +
+  theme(legend.position = "none") +
+  geom_errorbar(aes(ymin = mean - sd, ymax = mean + sd), width = .2,
+                position = position_dodge(.9)) +
+  labs(title = "Stereotyping predicted by perspective taking condition",
+       subtitle = "Higher stereotyping scores indicate more stereotyping",
+       x = "Perspective taking condition",
+       y = "Stereotyping score")
+```
+
+# Model predicting manipulation check by condition
+
+```{r pt mancheck}
+pt_check_model <- pov_clean %>% 
+  select(pt_mancheck, pt_condition, subid) %>% 
+  unique() %>% 
+  na.omit()
+
+pt_check_model %>% 
+  select(subid) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  nrow()
+
+contrasts(pt_check_model$pt_condition) <- "contr.helmert"
+contrasts(pt_check_model$pt_condition) 
+
+ptcheck_model <- lm(pt_mancheck ~ pt_condition, data = pt_check_model)
+summary(ptcheck_model)
+```
+
+## Plot of condition predicting manipulation check
+
+```{r pt man descrip and plot}
+pt_check_data <- pt_check_model %>% 
+   mutate(pt_mancheck_recode = recode(pt_mancheck,
+                                 `1` = "5",
+                                 `2` = "4",
+                                 `3` = "3",
+                                 `4` = "2",
+                                 `5` = "1")) %>% 
+  mutate(pt_manceck_recode_num = as.numeric(pt_mancheck_recode)) %>% 
+  group_by(pt_condition) %>% 
+  summarize(mean = mean(pt_manceck_recode_num),
+            sd = sd(pt_manceck_recode_num),
+            se = sd(pt_manceck_recode_num)/sqrt(length(pt_manceck_recode_num)))
+  
+ggplot(pt_check_data, aes(pt_condition, mean, fill = pt_condition)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  scale_fill_viridis_d() +
+  theme(legend.position = "none") +
+  geom_errorbar(aes(ymin = mean - se, ymax = mean + se), width = .2,
+                position = position_dodge(.9)) +
+  labs(title = "Self-reported perspective taking by perspective taking condition",
+       subtitle = "Higher stereotyping scores indicate more self-reported perspective taking",
+       x = "Perspective taking condition",
+       y = "Self-reported perspective taking")
+```
+
+The contrast that was significant was objective vs the other three (though the other two were marginal), which can be seen in this plot. Not surprising that we find less self-reported PT in the objective condition but not in the other three, though interesting we didn't find any differences between objective and the other conditions in our outcome measures.
+
+# Model predicting difference scores for projection by condition
+
+```{r pt cond diff scores analysis}
+diff_score_data <- pov_clean %>% 
+  select(subid, pt_condition, targ, self) %>% 
+  group_by(subid) %>% 
+  mutate(targ_ave = mean(targ),
+         self_ave = mean(self)) %>% 
+  select(-c(targ, self)) %>% 
+  unique() %>% 
+  na.omit() %>% 
+  mutate(diff_score = self_ave-targ_ave)
+diff_score_data
+
+diff_score_data %>% 
+  group_by(pt_condition) %>% 
+  summarize(mean = mean(diff_score),
+         sd = sd(diff_score))
+
+contrasts(diff_score_data$pt_condition) <- "contr.helmert"
+contrasts(diff_score_data$pt_condition)
+
+diff_score_model <- lm(diff_score ~ pt_condition, data = diff_score_data)
+summary(diff_score_model)
+```
+
+Nothing is significant.
